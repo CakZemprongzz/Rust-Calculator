@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+relm4 = "0.8.0"
+relm4-components = "0.8.0"
+gtk = "0.18.1"
+gtk4 = "0.8.0"

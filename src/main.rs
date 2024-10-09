@@ -1,40 +1,100 @@
-use std::io;
+use gtk::glib::clone;
+use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt};
+use relm4::{gtk, ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent};
 
-fn main() {
-    println!("Please input the number and operation such as 1 + 2.");
+struct AppModel {
+    counter: u8,
+}
 
-    let mut input:String = String::new();
+#[derive(Debug)]
+enum AppInput {
+    Increment,
+    Decrement,
+}
 
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read line");
+struct AppWidgets {
+    label: gtk::Label,
+}
 
-    let numbers: Vec<&str> = input.trim().split_whitespace().collect();
+impl SimpleComponent for AppModel {
 
-    if numbers.len() != 3 {
-        print!("NANI")
-    }else{
-        let number_1: i32 = numbers[0].parse().unwrap();
-        let operation = numbers[1];
-        let number_2: i32 = numbers[2].parse().unwrap();
-        let result = match operation {
-            "+" => number_1 + number_2,
-            "-" => number_1 - number_2,
-            "*" => number_1 * number_2,
-            "/" => {
-                if number_2 == 0 {
-                    println!("Cannot divide by zero!");
-                    return;
-                }
-                number_1 / number_2
-            }
-            _ => {
-                println!("Unknown operator: {}", operation);
-                return;
-            }
-        };
-        
-        println!("Result: {} {} {} = {}", number_1, operation, number_2, result);
+    /// The type of the messages that this component can receive.
+    type Input = AppInput;
+    /// The type of the messages that this component can send.
+    type Output = ();
+    /// The type of data with which this component will be initialized.
+    type Init = u8;
+    /// The root GTK widget that this component will create.
+    type Root = gtk::Window;
+    /// A data structure that contains the widgets that you will need to update.
+    type Widgets = AppWidgets;
+
+    fn init_root() -> Self::Root {
+        gtk::Window::builder()
+            .title("Simple app")
+            .default_width(300)
+            .default_height(100)
+            .build()
     }
 
+    /// Initialize the UI and model.
+    fn init(
+        counter: Self::Init,
+        window: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> relm4::ComponentParts<Self> {
+        let model = AppModel { counter };
+
+        let vbox = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(5)
+            .build();
+
+        let inc_button = gtk::Button::with_label("Increment");
+        let dec_button = gtk::Button::with_label("Decrement");
+
+        let label = gtk::Label::new(Some(&format!("Counter: {}", model.counter)));
+        label.set_margin_all(5);
+
+        window.set_child(Some(&vbox));
+        vbox.set_margin_all(5);
+        vbox.append(&inc_button);
+        vbox.append(&dec_button);
+        vbox.append(&label);
+
+        inc_button.connect_clicked(clone!(@strong sender => move |_| {
+            sender.input(AppInput::Increment);
+        }));
+
+        dec_button.connect_clicked(clone!(@strong sender => move |_| {
+            sender.input(AppInput::Decrement);
+        }));
+
+        let widgets = AppWidgets { label };
+
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
+        match message {
+            AppInput::Increment => {
+                self.counter = self.counter.wrapping_add(1);
+            }
+            AppInput::Decrement => {
+                self.counter = self.counter.wrapping_sub(1);
+            }
+        }
+    }
+
+    /// Update the view to represent the updated model.
+    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
+        widgets
+            .label
+            .set_label(&format!("Counter: {}", self.counter));
+    }
+}
+
+fn main() {
+    let app = RelmApp::new("relm4.test.simple_manual");
+    app.run::<AppModel>(0);
 }
