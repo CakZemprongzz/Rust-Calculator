@@ -1,100 +1,107 @@
-use gtk::glib::clone;
-use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt};
-use relm4::{gtk, ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent};
+use regex::Regex;
+use gtk::{prelude::*, Application, ApplicationWindow, Button, ListBox, Box as GtkBox, Orientation, Entry};
+use gtk::glib;
 
-struct AppModel {
-    counter: u8,
+const APP_ID: &str = "org.rust.calc";
+
+fn main() -> glib::ExitCode {
+    let app = Application::builder().application_id(APP_ID).build();
+    app.connect_activate(build_ui);
+    app.run()
 }
 
-#[derive(Debug)]
-enum AppInput {
-    Increment,
-    Decrement,
-}
+fn build_ui(app: &Application) {
 
-struct AppWidgets {
-    label: gtk::Label,
-}
+    let entry = Entry::builder()
+        .placeholder_text("Enter calculation (e.g., 2 + 2)")
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
 
-impl SimpleComponent for AppModel {
 
-    /// The type of the messages that this component can receive.
-    type Input = AppInput;
-    /// The type of the messages that this component can send.
-    type Output = ();
-    /// The type of data with which this component will be initialized.
-    type Init = u8;
-    /// The root GTK widget that this component will create.
-    type Root = gtk::Window;
-    /// A data structure that contains the widgets that you will need to update.
-    type Widgets = AppWidgets;
+    let button_display = Button::builder()
+        .label("Calculate")
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
 
-    fn init_root() -> Self::Root {
-        gtk::Window::builder()
-            .title("Simple app")
-            .default_width(300)
-            .default_height(100)
-            .build()
-    }
+    let button_clear = Button::builder()
+        .label("Clear")
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
 
-    /// Initialize the UI and model.
-    fn init(
-        counter: Self::Init,
-        window: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> relm4::ComponentParts<Self> {
-        let model = AppModel { counter };
+    let list_box = ListBox::new();
 
-        let vbox = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(5)
-            .build();
-
-        let inc_button = gtk::Button::with_label("Increment");
-        let dec_button = gtk::Button::with_label("Decrement");
-
-        let label = gtk::Label::new(Some(&format!("Counter: {}", model.counter)));
-        label.set_margin_all(5);
-
-        window.set_child(Some(&vbox));
-        vbox.set_margin_all(5);
-        vbox.append(&inc_button);
-        vbox.append(&dec_button);
-        vbox.append(&label);
-
-        inc_button.connect_clicked(clone!(@strong sender => move |_| {
-            sender.input(AppInput::Increment);
-        }));
-
-        dec_button.connect_clicked(clone!(@strong sender => move |_| {
-            sender.input(AppInput::Decrement);
-        }));
-
-        let widgets = AppWidgets { label };
-
-        ComponentParts { model, widgets }
-    }
-
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
-        match message {
-            AppInput::Increment => {
-                self.counter = self.counter.wrapping_add(1);
-            }
-            AppInput::Decrement => {
-                self.counter = self.counter.wrapping_sub(1);
-            }
+    button_display.connect_clicked({
+        let list_box = list_box.clone();
+        let entry = entry.clone();
+        move |_| {
+            let text = entry.text().to_string();
+            let result = cal(text.clone());
+            let label = gtk::Label::new(Some(&result));
+            list_box.append(&label);
         }
-    }
+    });
 
-    /// Update the view to represent the updated model.
-    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
-        widgets
-            .label
-            .set_label(&format!("Counter: {}", self.counter));
+    button_clear.connect_clicked({
+        let list_box = list_box.clone();
+        let entry = entry.clone();
+        move |_| {
+            while let Some(row) = list_box.last_child() {
+                list_box.remove(&row);
+            }
+            entry.set_text("");
+        }
+    });
+
+    let vbox = GtkBox::new(Orientation::Vertical, 0);
+    vbox.append(&entry);          
+    vbox.append(&button_display); 
+    vbox.append(&button_clear);   
+    vbox.append(&list_box);       
+
+    let window = ApplicationWindow::builder()
+        .application(app)
+        .title("Calculator ")
+        .default_width(400)
+        .child(&vbox) 
+        .build();
+
+    window.present();
+}
+
+fn cal(number: String) -> String {
+
+    let re = Regex::new(r"(\d+)\s*([\+\-\*/])\s*(\d+)").unwrap();
+
+    if let Some(caps) = re.captures(&number) {
+        let number_1: i32 = caps[1].parse().unwrap_or(0);
+        let operation = &caps[2];
+        let number_2: i32 = caps[3].parse().unwrap_or(0);
+
+        let result = match operation {
+            "+" => number_1 + number_2,
+            "-" => number_1 - number_2,
+            "*" => number_1 * number_2,
+            "/" => {
+                if number_2 == 0 {
+                    return "Cannot divide by zero!".to_string();
+                }
+                number_1 / number_2
+            }
+            _ => return format!("Unknown operator: {}", operation),
+        };
+
+        return result.to_string();
+    } else {
+        return "Invalid input format. Expected format: <number><operator><number>".to_string();
     }
 }
 
-fn main() {
-    let app = RelmApp::new("relm4.test.simple_manual");
-    app.run::<AppModel>(0);
-}
